@@ -51,7 +51,7 @@ async function getGeminiResponse(userText) {
 Nhiệm vụ: Tư vấn quy cách sản xuất bao bì (giấy Ivory 250-400gsm, Kraft, Duplex, carton sóng E/B), gợi ý kích thước (Dài x Rộng x Cao cm) và dặn khách để lại số lượng / kích thước để xưởng báo giá chính xác.
 Phong cách: Thân thiện, ngắn gọn (2-4 câu), đúng thuật ngữ ngành in bao bì.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   try {
     const response = await fetch(url, {
