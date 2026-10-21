@@ -15,7 +15,6 @@ export default async function handler(req, res) {
   // 2. Xử lý tin nhắn đến từ khách hàng (POST)
   if (req.method === 'POST') {
     const body = req.body;
-    console.log('Dữ liệu nhận từ Facebook:', JSON.stringify(body));
 
     if (body.object === 'page') {
       for (const entry of body.entry || []) {
@@ -24,10 +23,13 @@ export default async function handler(req, res) {
         if (webhookEvent && webhookEvent.message && !webhookEvent.message.is_echo) {
           const senderPsid = webhookEvent.sender.id;
           const userMessage = webhookEvent.message.text || '';
-          console.log(`Nhận tin từ ${senderPsid}: ${userMessage}`);
+          console.log(`Khách hỏi (${senderPsid}): ${userMessage}`);
 
-          // Gửi phản hồi lại Messenger
-          await sendReply(senderPsid, `Tiến Phát đã nhận được tin nhắn: "${userMessage}". Chúng tôi sẽ tư vấn quy cách ngay!`);
+          // Gọi Gemini AI xử lý câu trả lời
+          const aiReply = await getGeminiResponse(userMessage);
+
+          // Gửi câu trả lời của AI ngược về Messenger
+          await sendReply(senderPsid, aiReply);
         }
       }
       return res.status(200).send('EVENT_RECEIVED');
@@ -38,25 +40,55 @@ export default async function handler(req, res) {
   return res.status(405).send('Method Not Allowed');
 }
 
-async function sendReply(recipientId, messageText) {
-  const pageToken = (process.env.FB_PAGE_ACCESS_TOKEN || '').trim();
-  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(pageToken)}`;
+async function getGeminiResponse(userText) {
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) {
+    return "Cảm ơn bạn đã nhắn tin cho Tiến Phát In Túi Giấy & Hộp Giấy Gia Lai. Xưởng sẽ liên hệ tư vấn quy cách chi tiết ngay!";
+  }
 
-  const payload = {
-    recipient: { id: recipientId },
-    message: { text: messageText }
-  };
+  const systemPrompt = `Bạn là trợ lý tư vấn chuyên nghiệp của xưởng in 'Tiến Phát In Túi Giấy & Hộp Giấy Gia Lai'. 
+Nhiệm vụ: Tư vấn quy cách sản xuất bao bì (giấy Ivory 250-400gsm, Kraft, Duplex, carton sóng E/B/3 lớp/5 lớp), gợi ý kích thước (Dài x Rộng x Cao cm) và dặn dò khách để lại số lượng / kích thước để xưởng báo giá chính xác nhất. 
+Phong cách: Thân thiện, ngắn gọn (dưới 4 câu), đúng thuật ngữ ngành in ấn.`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\nKhách hỏi: "${userText}"\nTrả lời:` }]
+          }
+        ]
+      })
     });
 
-    const resData = await response.json();
-    console.log('Kết quả từ Facebook Send API:', JSON.stringify(resData));
+    const data = await response.json();
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return reply || "Tiến Phát đã nhận được thông tin. Xưởng sẽ liên hệ tư vấn chi tiết cho bạn ngay ạ!";
+  } catch (err) {
+    console.error("Lỗi gọi Gemini:", err);
+    return "Xưởng in Tiến Phát đã ghi nhận yêu cầu và sẽ hỗ trợ quy cách chi tiết cho bạn ngay ạ!";
+  }
+}
+
+async function sendReply(recipientId, messageText) {
+  const pageToken = (process.env.FB_PAGE_ACCESS_TOKEN || '').trim();
+  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(pageToken)}`;
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message: { text: messageText }
+      })
+    });
   } catch (error) {
-    console.error('Lỗi khi gọi API Facebook:', error);
+    console.error('Lỗi khi gửi tin Facebook:', error);
   }
 }
