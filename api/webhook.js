@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // 1. Xác thực Webhook với Facebook (GET)
   if (req.method === 'GET') {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -11,7 +10,6 @@ export default async function handler(req, res) {
     return res.status(403).send('Forbidden');
   }
 
-  // 2. Xử lý tin nhắn từ khách hàng (POST)
   if (req.method === 'POST') {
     const body = req.body;
 
@@ -39,7 +37,6 @@ export default async function handler(req, res) {
 async function getGeminiResponse(userText) {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) {
-    console.error("LỖI: Chưa cấu hình GEMINI_API_KEY");
     return "Cảm ơn bạn đã nhắn tin cho Tiến Phát In Túi Giấy & Hộp Giấy Gia Lai. Xưởng sẽ liên hệ tư vấn chi tiết ngay!";
   }
 
@@ -56,50 +53,57 @@ Phong cách: Thân thiện, ngắn gọn (2-4 câu), đúng thuật ngữ ngành
     ]
   };
 
-  // Gọi trực tiếp model gemini-3.0-flash theo đúng yêu cầu từ hệ thống Google
-  let modelName = 'models/gemini-3.0-flash';
-  let url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
-
   try {
-    let response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    // 1. Lấy trực tiếp danh sách tất cả model từ API Key của bạn
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const listData = await listRes.json();
 
-    let data = await response.json();
+    // Lọc các model hỗ trợ generateContent và LOẠI BỎ hoàn toàn 2.5-flash / 1.5-flash đã ngừng hỗ trợ
+    const availableModels = (listData.models || [])
+      .filter(m => 
+        m.supportedGenerationMethods?.includes('generateContent') &&
+        !m.name.includes('2.5-flash') &&
+        !m.name.includes('1.5-') &&
+        !m.name.includes('vision') &&
+        !m.name.includes('embedding')
+      )
+      .map(m => m.name);
 
-    // Nếu tên model bị báo 404, tự động truy vấn danh sách model hợp lệ của API Key này và gọi lại ngay lập tức
-    if (!response.ok && data?.error?.code === 404) {
-      console.log("Đang tự động lấy tên model khả dụng từ Google...");
-      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      const listData = await listRes.json();
-      
-      const validModel = (listData.models || []).find(m => 
-        m.supportedGenerationMethods?.includes('generateContent') && 
-        (m.name.includes('flash') || m.name.includes('gemini'))
-      );
+    // Ưu tiên các model Gemini 3 mới nhất lên đầu
+    const candidateModels = [
+      'models/gemini-3-flash-preview',
+      'models/gemini-3.0-flash',
+      'models/gemini-3.8-flash',
+      ...availableModels
+    ];
 
-      if (validModel) {
-        console.log("Đã tìm thấy model chuẩn:", validModel.name);
-        url = `https://generativelanguage.googleapis.com/v1beta/${validModel.name}:generateContent?key=${apiKey}`;
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        data = await response.json();
+    // Lọc trùng lặp
+    const uniqueModels = [...new Set(candidateModels)];
+    console.log("Danh sách model sẽ thử:", uniqueModels.slice(0, 6));
+
+    // 2. Thử lần lượt từng model cho đến khi thành công 100%
+    for (const modelName of uniqueModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (reply) {
+          console.log(`THÀNH CÔNG VỚI MODEL ${modelName}:`, reply);
+          return reply.trim();
+        }
+      } else {
+        console.warn(`Model ${modelName} từ chối (${data?.error?.code}): ${data?.error?.message}`);
       }
     }
 
-    if (!response.ok) {
-      console.error("LỖI TỪ GOOGLE GEMINI:", JSON.stringify(data));
-      return "Tiến Phát đã nhận được thông tin. Xưởng sẽ liên hệ tư vấn chi tiết cho bạn ngay ạ!";
-    }
-
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    console.log("TRẢ LỜI THÀNH CÔNG:", reply);
-    return reply ? reply.trim() : "Tiến Phát đã nhận được thông tin. Xưởng sẽ liên hệ tư vấn chi tiết cho bạn ngay ạ!";
+    return "Tiến Phát đã nhận được thông tin. Xưởng sẽ liên hệ tư vấn chi tiết cho bạn ngay ạ!";
   } catch (err) {
     console.error("LỖI FETCH GEMINI:", err);
     return "Tiến Phát đã nhận được thông tin. Xưởng sẽ liên hệ tư vấn chi tiết cho bạn ngay ạ!";
