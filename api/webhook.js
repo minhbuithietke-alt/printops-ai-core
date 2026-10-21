@@ -1,18 +1,15 @@
 export default async function handler(req, res) {
-  // 1. Xác thực Webhook với Facebook (GET)
   if (req.method === 'GET') {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
     if (mode === 'subscribe' && token === process.env.VERIFY_TOKEN) {
-      console.log('Webhook verified successfully!');
       return res.status(200).send(challenge);
     }
     return res.status(403).send('Forbidden');
   }
 
-  // 2. Xử lý tin nhắn đến từ khách hàng (POST)
   if (req.method === 'POST') {
     const body = req.body;
 
@@ -25,10 +22,10 @@ export default async function handler(req, res) {
           const userMessage = webhookEvent.message.text || '';
           console.log(`Khách hỏi (${senderPsid}): ${userMessage}`);
 
-          // Gọi Gemini AI xử lý câu trả lời
+          // 1. Gọi Gemini AI sinh câu trả lời tư vấn bao bì
           const aiReply = await getGeminiResponse(userMessage);
 
-          // Gửi câu trả lời của AI ngược về Messenger
+          // 2. Gửi câu trả lời của AI ngược về Messenger
           await sendReply(senderPsid, aiReply);
         }
       }
@@ -43,7 +40,7 @@ export default async function handler(req, res) {
 async function getGeminiResponse(userText) {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) {
-    return "Cảm ơn bạn đã nhắn tin cho Tiến Phát In Túi Giấy & Hộp Giấy Gia Lai. Xưởng sẽ liên hệ tư vấn quy cách chi tiết ngay!";
+    return "Cảm ơn bạn đã nhắn tin cho Tiến Phát In Túi Giấy & Hộp Giấy Gia Lai. Xưởng đang hoàn tất kết nối hệ thống tự động!";
   }
 
   const systemPrompt = `Bạn là trợ lý tư vấn chuyên nghiệp của xưởng in 'Tiến Phát In Túi Giấy & Hộp Giấy Gia Lai'. 
@@ -71,7 +68,7 @@ Phong cách: Thân thiện, ngắn gọn (dưới 4 câu), đúng thuật ngữ 
     return reply || "Tiến Phát đã nhận được thông tin. Xưởng sẽ liên hệ tư vấn chi tiết cho bạn ngay ạ!";
   } catch (err) {
     console.error("Lỗi gọi Gemini:", err);
-    return "Xưởng in Tiến Phát đã ghi nhận yêu cầu và sẽ hỗ trợ quy cách chi tiết cho bạn ngay ạ!";
+    return "Tiến Phát đã ghi nhận yêu cầu và sẽ hỗ trợ quy cách chi tiết cho bạn ngay ạ!";
   }
 }
 
