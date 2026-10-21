@@ -1,0 +1,6 @@
+{
+  "name": "PrintOps AI Core",
+  "description": "Enterprise Management System & Automation Engine for the Printing & Packaging industry (In ấn bao bì: hộp giấy, thùng carton, túi giấy, decal/tem nhãn).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
